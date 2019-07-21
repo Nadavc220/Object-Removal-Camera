@@ -1,0 +1,24 @@
+First idea: do a POC, quick and dirty and without any optimization, just build a good
+framework for receiving a video and detecting objects, later taking also pixels from different
+frames.
+
+needed to implement a image object detector which receives an image and returns a detection
+object which holds the bounding box, the detection class and the probability.
+first thing which came in mind was MobileNet, which can be used as a fast detector although
+it is not very accurate.
+after implementing the MobileNet detector I had an unoptimzed POC which worked pretty well
+on some videos and it worked in a good pace but there was a major problem: detections were not good enough.
+- first fixing idea: expand detections
+- second fixing idea: use a slower but more reliable detection network: YOLO version 3
+
+After implementing yolo the network had much better detections and gave good results for different videos
+but there was another major flaw now: the implementation was very slow.
+- first thing to do was to optimize the program, so it would run its detection on lower resolution images
+and do a better "missing pixels" check. one thing was to resize the image only for the detection part, which
+can hurt the detection but makes things faster.
+- After optimizing on those parts it was obvious the major problem is the detection run, which without any
+frame processing took about a minute. The solution that came to mind was using only 10% of the frames.
+
+Since typical videos go for at least 30 frames per second we ca assume that there is not to much movement between
+every 10 frames, so we can run the video smoothly and every 10 frames stop for a detection and get the same speed
+of image generation.
