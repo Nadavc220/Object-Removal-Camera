@@ -5,6 +5,7 @@ detection[0, 0] holds info about all classes:
 [2] the confidence of this class
 [3] - [6] is the bounding box indices (need to round them up)
 """
+import imutils
 
 """ ============================ Imports ============================ """
 import numpy as np
@@ -86,6 +87,30 @@ class FrameDetector:
         print("[INFO] YOLO took {:.6f} seconds".format(end - start))
         return detections
 
+    def _filter_boxes(self, boxes, confidences, min_confidence, threshold=0.3):
+        idxs = cv2.dnn.NMSBoxes(boxes, confidences, min_confidence, threshold)
+        idxs = idxs.flatten()
+        return idxs
+
+    def _process_network_box_output(self, boxes, confidences, class_ids, unwanted_objects, image_shape, min_confidence, filter=True):
+        filtered_boxes_idx = range(len(boxes))
+        if filter:
+            filtered_boxes_idx = self._filter_boxes(boxes, confidences, min_confidence)
+        detection_struct = ut.DetectionStructure(unwanted_objects, min_confidence)
+        max_row, max_col = image_shape
+        for i in filtered_boxes_idx:
+            x, y, w, h = boxes[i][0], boxes[i][1], boxes[i][2], boxes[i][3]
+            start_row = y / max_row
+            start_col = x / max_col
+            end_row = (y + h) / max_row
+            end_col = (x + w) / max_col
+            box = ut.Box(start_row, start_col, end_row, end_col, COLORS[class_ids[i]])
+            # expanding boxes to make sure entire object is contained in box
+
+            detection = ut.Detection(CLASSES[class_ids[i]], confidences[i], box)
+            detection_struct.add_detection(detection)
+        return detection_struct
+
     def detect_frame(self, image, unwanted_objects, min_confidence=0.2):
         """
 
@@ -93,11 +118,15 @@ class FrameDetector:
         :param min_confidence:
         :return:
         """
-        layer_outputs = self._calc_frame_detection(image)
-
         start = time.time()
-        detection_struct = ut.DetectionStructure(unwanted_objects, min_confidence)
-        (max_row, max_col) = image.shape[:2]
+
+        resized_image = imutils.resize(image, width=400)
+        layer_outputs = self._calc_frame_detection(resized_image)
+        (max_row, max_col) = resized_image.shape[:2]
+
+        boxes = []
+        confidences = []
+        class_ids = []
         # check every output layer of the model
         for output in layer_outputs:
             for detection in output:
@@ -107,27 +136,32 @@ class FrameDetector:
                 class_id = np.argmax(scores)
                 confidence = scores[class_id]
 
-                # filter out weak predictions by ensuring the detected
-                # probability is greater than the minimum probability
+                # keeping only good confidence detections
                 if confidence > min_confidence:
-                    # scale the bounding box coordinates back relative to the
-                    # size of the image, keeping in mind that YOLO actually
-                    # returns the center (x, y)-coordinates of the bounding
-                    # box followed by the boxes' width and height, afterwords return
-                    # it to raw coordinates so it can be resized to different shapes.
                     box = detection[0:4] * np.array([max_col, max_row, max_col, max_row])
                     (centerX, centerY, width, height) = box.astype("int")
-                    start_row = int(centerY - (height / 2)) / max_row
-                    start_col = int(centerX - (width / 2)) / max_col
-                    end_row = int(centerY + (height / 2)) / max_row
-                    end_col = int(centerX + (width / 2)) / max_col
-                    box = ut.Box(start_row, start_col, end_row, end_col, COLORS[class_id])
-                    # expanding boxes to make sure entire object is contained in box
-                    box.expand(0.2)
+                    x, y = int(centerX - (width / 2)), int(centerY - (height / 2))  # top left corner
+                    boxes.append([x, y, int(width), int(height)])
+                    confidences.append(float(confidence))
+                    class_ids.append(class_id)
 
-                    detection = ut.Detection(CLASSES[class_id], confidence, box)
-                    detection_struct.add_detection(detection, add_unwanted_only=True)
+        detection_struct = self._process_network_box_output(boxes, confidences, class_ids, unwanted_objects, resized_image.shape[:2], min_confidence)
+        detection_struct.update_detections_to_image_coordinates(image)
 
         end = time.time()
         print("[INFO] frame processing took {:.6f} seconds".format(end - start))
+
         return detection_struct
+
+    def detect_multi_frames(self, frames, unwanted_objects, min_confidence=0.2):
+        """
+        Detects objects of multiple frames and unites the output to single detection
+        :param frames:
+        :param unwanted_objects:
+        :param min_confidence:
+        :return:
+        """
+        detections = []
+        for frame in frames:
+            detections.append(self.detect_frame(frame, unwanted_objects, min_confidence))
+        return ut.unite_detecions(detections)
