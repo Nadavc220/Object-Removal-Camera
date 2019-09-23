@@ -8,7 +8,6 @@ Author: Nadav Cohen, nadavc220, 200961969
 import numpy as np
 import cv2
 import math
-from Pixel_Data import *
 import logging
 
 """ ============================= Constants ============================= """
@@ -212,9 +211,7 @@ class Box:
         return self.check_overlap_percentage(other) > 0
 
 
-""" ============================= Functions ============================= """
-
-
+""" ============================= Detection Public Functions ============================= """
 
 
 def draw_detections_on_image(image, detections):
@@ -268,6 +265,9 @@ def unite_detecions(detections):
     return new
 
 
+""" ============================= Image Pblic Functions ============================= """
+
+
 def show_image(winname, image, size_factor=1, detections=None, video=False):
     image_copy = np.copy(image)
 
@@ -318,223 +318,6 @@ def image_resize(image, width=None, height=None, inter=cv2.INTER_AREA):
 
 """ ============================= Pixel Calculations ============================= """
 
-#
-# def calculate_common_pixel(row, col, background_map, frames):
-#     accurences = {}
-#     mapping = background_map[(row, col)]
-#     for frame_idx in mapping:
-#         value = frames[frame_idx][row, col]
-#         tup = (value[0], value[1], value[2])
-#         found = False
-#         for accurence in accurences.keys():
-#             if pixel_dist(np.array(accurence).astype('int'), np.array(tup).astype('int')) < PIXEL_SIMILIAR_THRESHOLD:
-#                 accurences[accurence].append(tup)
-#                 found = True
-#                 break
-#         if not found:
-#             accurences[tup] = [tup]
-#     best_key = sorted(accurences.keys(), key=lambda x: len(accurences[x]), reverse=True)[0]
-#     best_key_pixels = accurences[best_key]
-#     # sorted_chosen_pixels = sorted(best_key_pixels, key=lambda x: pixel_norm(x))
-#     # return sorted_chosen_pixels[len(sorted_chosen_pixels) // 2]
-#     r, g, b = 0, 0, 0
-#     for pixel in best_key_pixels:
-#         r += pixel[0] / len(best_key_pixels)
-#         g += pixel[1] / len(best_key_pixels)
-#         b += pixel[2] / len(best_key_pixels)
-#     return np.array([int(r), int(g), int(b)])
-#
-#
-# def calculate_pixel_clusters(row, col, background_map, frames, curr_image):
-#     background_frame_indices = background_map[(row, col)]  # a list of frames this pixel was in the background
-#     # initialize cluster dictionary
-#     keys = [(pixel[0], pixel[1], pixel[2]) for pixel in [frames[i][row, col] for i in background_frame_indices]]
-#     pixel_clusters = {k: [np.array(k)] for k in keys}
-#     for i in range(len(keys)):
-#         for j in range(i + 1, len(keys)):
-#             pixel, other = keys[i], keys[j]
-#             if euclidean_dist(pixel, other) <= PIXEL_SIMILIAR_THRESHOLD:
-#                 pixel_clusters[pixel].append(np.array(other))
-#                 pixel_clusters[other].append(np.array(pixel))
-#     return np.array(cluster_size_pixel_sort(pixel_clusters))
-
-
-# def calculate_pixel_options(row, col, background_map, frames):
-#     """
-#     Calculates a list of [(p, cs)]
-#     :param row:
-#     :param col:
-#     :param background_map:
-#     :param frames:
-#     :return:
-#     """
-#     pixel_clusters = calculate_pixel_clusters(row, col, background_map, frames)
-#     pixel_clusters_sizes = [(k, len(pixel_clusters[k])) for k in
-#                             sorted(pixel_clusters.keys(), key=lambda k: len(pixel_clusters[k]), reverse=True)]
-#     return pixel_clusters_sizes
-
-
-def calculate_pixel_clusters(row, col, background_map, frames):
-    """
-    Calculates a dictionary of {pixel: cluster} here pixel is the frame number the pixel was taken from and
-    cluster is all other frames which their pixels are close up to a threshold to the key pixel.
-    :param row: row of the pixel
-    :param col: col of the pixel
-    :param background_map: the mapping of the frames which represent a background value for this pixel
-    :param frames: all frames gathered from the video.
-    :return: A dictionary of pixels and their clusters
-    """
-    background_frame_indices = background_map[(row, col)]  # a list of frames this pixel was in the background
-    pixel_clusters = {k: [k] for k in background_frame_indices}
-    for i in range(len(background_frame_indices)):
-        for j in range(i + 1, len(background_frame_indices)):
-            frame_index = background_frame_indices[i]
-            other_index = background_frame_indices[j]
-            if euclidean_dist(frames[frame_index][row, col], frames[other_index][row, col]) <= PIXEL_SIMILIAR_THRESHOLD:
-                pixel_clusters[frame_index].append(other_index)
-                pixel_clusters[other_index].append(frame_index)
-    return process_unique_pixel_clusters(pixel_clusters, row, col, frames)
-
-
-def process_unique_pixel_clusters(pixel_clusters, row, col, frames):
-    filtered_dict = {}
-    seen_color_values = []
-
-    for key in pixel_clusters:
-        color_tup = tuple(frames[key][row, col])
-        if color_tup not in seen_color_values:
-            filtered_dict[key] = pixel_clusters[key]
-            seen_color_values.append(color_tup)
-    return filtered_dict
-
-
-def calculate_pixel_data(row, col, background_map, frames):
-    """
-    Creates a PixelData object from video data gathered.
-    :param row: row of the pixel
-    :param col: col of the pixel
-    :param background_map: the mapping of the frames which represent a background value for this pixel
-    :param frames: all frames gathered from the video.
-    :return: PixelData object of the given row, col pixel
-    """
-    pixel_clusters = calculate_pixel_clusters(row, col, background_map, frames)
-    sorted_frame_cluster_list = [(k, len(pixel_clusters[k])) for k in
-                     sorted(pixel_clusters.keys(), key=lambda k: len(pixel_clusters[k]), reverse=True)]
-    frame_to_cluster_size_dict = {p[0]: p[1] for p in sorted_frame_cluster_list}
-    source_frame = sorted_frame_cluster_list[0][0]
-    return PixelData(row, col, source_frame, frame_to_cluster_size_dict, sorted_frame_cluster_list)
-
-
-
-
-        # value = frames[frame_idx][row, col]
-        # tup = (value[0], value[1], value[2])
-        # found = False
-        # for accurence in clusters.keys():
-        #     if euclidean_dist(np.array(accurence), np.array(tup)) < PIXEL_SIMILIAR_THRESHOLD:
-        #         clusters[accurence].append(value)
-        #         found = True
-        #         break
-        # if not found:
-        #     clusters[tup] = [value]
-    # if True:
-    #     best_key = calculate_best_color_key_commonwise(clusters)
-    #     best_key_pixels = clusters[best_key]
-    #     # sorted_chosen_pixels = sorted(best_key_pixels, key=lambda x: pixel_norm(x))
-    #     # return sorted_chosen_pixels[len(sorted_chosen_pixels) // 2]
-    #     r, g, b = 0, 0, 0
-    #     for pixel in best_key_pixels:
-    #         r += pixel[0] / len(best_key_pixels)
-    #         g += pixel[1] / len(best_key_pixels)
-    #         b += pixel[2] / len(best_key_pixels)
-    #     return np.array([r, g, b])
-    # else:
-    #     best_key = calculate_best_color_key_neighbourwise(row, col, clusters, curr_image)
-    #     return clusters[best_key]
-#
-# def calculate_common_pixel(row, col, background_map, frames, curr_image):
-#     accurences = {}  # clustering pixels ny euclidean distance
-#     mapping = background_map[(row, col)]  # a list of frames this pixel was in the background
-#     for frame_idx in mapping:
-#         value = frames[frame_idx][row, col]
-#         tup = (value[0], value[1], value[2])
-#         found = False
-#         for accurence in accurences.keys():
-#             if pixel_dist(np.array(accurence), value) < PIXEL_SIMILIAR_THRESHOLD:
-#                 accurences[accurence].append(value)
-#                 found = True
-#                 break
-#         if not found:
-#             accurences[tup] = [value]
-#         best_key = calc_best_key_spatial(row, col, accurences, mapping, frames)
-#         return sorted(accurences[best_key], key=pixel_norm)[len(accurences[best_key]) // 2]
-#
-#
-# def calc_best_key_spatial(row, col, accurences, mapping, frames):
-#     spatial_pixels = get_spatial_values(row, col, mapping, frames)
-#     count_dict = {}
-#     for key in accurences.keys():
-#         count_dict[key] = 0
-#         for pixel in spatial_pixels:
-#             if euclidean_dist(key, pixel) < PIXEL_SIMILIAR_THRESHOLD:
-#                 count_dict[key] += 1
-#     return sorted(count_dict.keys(), key=lambda x: count_dict[x], reverse=True)[0]
-
-
-# def cluster_size_pixel_sort(row, col, pixel_clusters, frames):
-#     best_key = sorted(pixel_clusters.keys(), key=lambda x: len(pixel_clusters[x]), reverse=True)[0]
-#     # close_frame_indices = pixel_clusters[best_key]
-#     # average_cluster_value = np.average([frames[i][row, col] for i in close_frame_indices], axis=0)
-#     average_cluster_value = frames[best_key][row, col]
-#     return average_cluster_value
-
-
-# def calculate_best_color_key_neighbourwise(row, col, accurences, curr_image):
-#     neighbour_values = get_neighbour_values(row, col, curr_image)
-#     if len(neighbour_values) == 0:
-#         return calculate_best_color_key_commonwise(accurences)
-#     for key in accurences:
-#         accurences[key] = sum(accurences[key]) // len(accurences[key])
-#     sorted_neigh = sorted(neighbour_values, key=lambda x: x[1], reverse=True)
-#     for val, count in sorted_neigh:
-#         for acc in accurences.keys():
-#             if euclidean_dist(val, accurences[acc]) < PIXEL_SIMILIAR_THRESHOLD:
-#                 return acc
-#     return calculate_best_color_key_commonwise(accurences)
-
-
-# def get_neighbour_values(row, col, image):
-#     final_vals = {}
-#     neighbour_vals = []
-#     if row - 1 >= 0 and col - 1 >= 0:
-#         neighbour_vals.append(image[row - 1, col - 1])
-#     if row - 1 >= 0:
-#         neighbour_vals.append(image[row - 1, col])
-#     if row - 1 >= 0 and col + 1 < image.shape[1]:
-#         neighbour_vals.append(image[row - 1, col + 1])
-#     if col - 1 >= 0:
-#         neighbour_vals.append(image[row, col - 1])
-#     if col + 1 < image.shape[1]:
-#         neighbour_vals.append(image[row, col + 1])
-#     if col - 1 >= 0 and row + 1 < image.shape[0]:
-#         neighbour_vals.append(image[row + 1, col - 1])
-#     if row + 1 < image.shape[0]:
-#         neighbour_vals.append(image[row + 1, col])
-#     if row + 1 < image.shape[0] and col + 1 < image.shape[1]:
-#         neighbour_vals.append(image[row + 1, col + 1])
-#
-#     neighbour_vals = list(filter(lambda x: not np.any(x == -1), neighbour_vals))
-#     if len(neighbour_vals) <= 1:
-#         return [(val, 1) for val in neighbour_vals]
-#
-#     for pix in neighbour_vals:
-#         pix_tup = (pix[0], pix[1], pix[2])
-#         for val in final_vals.keys():
-#             if euclidean_dist(val, pix_tup) < PIXEL_SIMILIAR_THRESHOLD:
-#                 final_vals[val].append(pix_tup)
-#                 continue
-#         final_vals[pix_tup] = [pix]
-#     return [(sum(final_vals[key]) // len(final_vals[key]), len(final_vals[key])) for key in final_vals.keys()]
 
 def get_neighbour_indices(row, col, shape):
     neighbour_indices = []
@@ -549,21 +332,7 @@ def get_neighbour_indices(row, col, shape):
     return neighbour_indices
 
 
-
-# def get_spatial_values(row, col, mapping, frames):
-#     spatial = []
-#     shape = frames[0].shape
-#     start_row = max(0, row - 5)
-#     start_col = max(0, col - 5)
-#     end_row = min(shape[0] - 1, row + 5)
-#     end_col = min(shape[1] - 1, col + 5)
-#     for frame_idx in mapping:
-#         frame = frames[frame_idx]
-#         patch = frame[start_row:end_row, start_col:end_col]
-#         reshaped_patch = patch.reshape((patch.shape[0] * patch.shape[1], 3))
-#         for pixel in reshaped_patch:
-#             spatial.append(pixel)
-#     return spatial
+""" ============================= Log Functions ============================= """
 
 
 def log_or_print(message, log_msg=True, print_msg=True):

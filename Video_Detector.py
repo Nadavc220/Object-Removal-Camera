@@ -20,9 +20,11 @@ UNIFY_COLLISION = False
 STREAM_SIZE_FACTOR = 1
 SHOW_VIDEO = False
 
-QUANTIZE_IMAGE = True
+QUANTIZE_IMAGE = False
 QUANTIZATION_COLOR_COUNT = 15
 QUANTIZATION_ITERS = 3
+
+QUANTIZE_FRAME_WIDE = False
 
 
 """ ============================= Classes ============================= """
@@ -40,14 +42,17 @@ class VideoDetector:
         self.was_update = False
         self.missing_pixels = []
         self.frame_index_count = 0
-        self.background_map = None
+        self.pixel_background_frames_map = None
         self.frames = None
         self.pixel_data_dict = None
         self.optimizer = None
+        self.output_name_folder = ""
+        self.output_path = ""
+        self.alpha = 0
 
     # ===================== General Class Methods =====================
 
-    def initialize_video_stream(self, filename):
+    def __initialize_video_stream(self, filename):
         """
         Initializes a video stream
         :param filename: the path to the video file, if None is given use web-cam
@@ -62,7 +67,7 @@ class VideoDetector:
         fps = FPS().start()
         return vs, fps
 
-    def destruct_video_stream(self, vs, fps):
+    def __destruct_video_stream(self, vs, fps):
         """
         Closes the video stream.
         """
@@ -81,53 +86,30 @@ class VideoDetector:
             return True
         return False
 
-    def refresh(self, output_path, alpha):
+    def refresh(self, output_name_folder, alpha):
         self.alpha = alpha
-        self.output_path = output_path
+        self.output_name_folder = output_name_folder
+        self.output_path = self.output_name_folder + str((int(alpha * 100))) + '/'
         if self.optimizer is not None:
             self.optimizer.refresh(alpha)
 
     # ===================== Video Detection Methods =====================
 
-    def _construct_image(self):
-        """
-        Constructs a clean image given data collected from a video stream.
-        :return: a unwanted object clean image.
-        """
-        ut.log_or_print("[INFO] Starting Image Construction... [INFO]")
-        if self.pixel_data_dict is None:
-            start = time.time()
-            self.pixel_data_dict = {}
-            ut.log_or_print("[INFO] Building Hierarchical Pixel Data Source... [INFO]")
-            for row, col in ut.row_col_generator(self.frames[0].shape[:2]):
-                if len(self.background_map[row, col]) == 0:
-                    self.background_map[row, col] = list(range(len(self.frames)))
-                if len(self.background_map[row, col]) == len(self.frames):
-                    self.pixel_data_dict[(row, col)] = PixelData(row, col, 0, {k: len(self.frames) for k in range(len(self.frames))},
-                                                                 [(k, len(self.frames)) for k in range(len(self.frames))])
-                else:
-                    self.pixel_data_dict[(row, col)] = ut.calculate_pixel_data(row, col, self.background_map, self.frames)
-            end = time.time()
-            ut.log_or_print_time(start, end)
-        if self.optimizer is None:
-            self.optimizer = GraphOptimizer(self.pixel_data_dict, self.frames, self.alpha)
-        image = self.optimizer.optimize_input(self.output_path)
-        return (image * 255).astype('uint8')
-
-    def analyze_video_data(self, video_src, unwanted_objects, show_video=SHOW_VIDEO):
+    def __analyze_video_data(self, video_src, unwanted_objects, show_video=SHOW_VIDEO):
+        ut.log_or_print("[INFO] Starting Video Analyzation... [INFO]")
         start_analyze = time.time()
-        vs, fps = self.initialize_video_stream(video_src)
+        vs, fps = self.__initialize_video_stream(video_src)
         total_frame_count = int(vs.get(cv2.CAP_PROP_FRAME_COUNT))
         analized_frames_count = (total_frame_count // FPD) + 1
         ut.log_or_print("[INFO] Analyzing " + str(analized_frames_count) + " out of " + str(total_frame_count) + " frames")
 
-        frames = []
+        self.frames = []
         frame_count = 0
         ret, frame = vs.read()
 
         # a dictionary which holds for every pixel its background frame indices
         pixel_keys = [(i, j) for i in range(frame.shape[0]) for j in range(frame.shape[1])]
-        background_map = {k: [] for k in pixel_keys}
+        self.pixel_background_frames_map = {k: [] for k in pixel_keys}
 
         # counts the indices of frames added to 'frames array
         frame_index_count = 0
@@ -140,11 +122,9 @@ class VideoDetector:
 
                 detections = self.frame_detector.detect_frame(frame, unwanted_objects, min_confidence=MIN_CONFIDENCE)
 
-                if QUANTIZE_IMAGE:
+                if QUANTIZE_IMAGE:  # perform RGB quantization on frame before storage
                     quantization_output = Quantization.quantize_rgb(frame, QUANTIZATION_COLOR_COUNT, QUANTIZATION_ITERS)
                     frame = quantization_output[0].astype('uint8')
-
-
 
                 start = time.time()
                 # get a binary map which shows where there is an unwanted detection
@@ -152,11 +132,11 @@ class VideoDetector:
                 for row in range(detection_map.shape[0]):
                     for col in range(detection_map.shape[1]):
                         if detection_map[row, col] == 0:
-                            background_map[(row, col)].append(frame_index_count)
+                            self.pixel_background_frames_map[(row, col)].append(frame_index_count)
                 end = time.time()
 
                 ut.log_or_print("[INFO] updating pixel info took {:.6f} seconds".format(end - start))
-                frames.append(frame / 255)
+                self.frames.append(frame / 255)
                 frame_index_count += 1
 
             if show_video:
@@ -167,27 +147,59 @@ class VideoDetector:
             ret, frame = vs.read()
             frame_count += 1
 
-        self.destruct_video_stream(vs, fps)
+        self.__destruct_video_stream(vs, fps)
         end_analyze = time.time()
         ut.log_or_print("=================================================")
         ut.log_or_print("[INFO] Video analyzing ended after {:.6f} seconds".format(end_analyze - start_analyze))
-        return background_map, frames
 
-    def get_clean_image(self, video_src, unwanted_objects):
+    def __process_video_data(self):
+            ut.log_or_print("[INFO] Processing video data...")
+            start = time.time()
+            self.pixel_data_dict = {}
+            ut.log_or_print("[INFO] Initializing pixels data structures...")
+            for row, col in ut.row_col_generator(self.frames[0].shape[:2]):
+
+                # if no background frames were found for this pixel check all frames as background
+                if len(self.pixel_background_frames_map[row, col]) == 0:
+                    self.pixel_background_frames_map[row, col] = list(range(len(self.frames)))
+
+                # if all frames were found as background mark first frame as best candidate
+                if len(self.pixel_background_frames_map[row, col]) == len(self.frames):
+                    self.pixel_data_dict[(row, col)] = PixelData(row, col, 0,
+                                                                 {k: len(self.frames) for k in range(len(self.frames))},
+                                                                 [(k, len(self.frames)) for k in
+                                                                  range(len(self.frames))])
+                else:
+                    self.pixel_data_dict[(row, col)] = calculate_pixel_data(row, col, self.pixel_background_frames_map,
+                                                                               self.frames)
+            end = time.time()
+            ut.log_or_print_time(start, end)
+
+    def object_sensitive_video_merge(self, video_src, unwanted_objects):
         """
         Receives a video path and unwanted objects list and returns a clean image.
         :param video_src: the path for the video
         :param unwanted_objects: a list of object we want to clean from the image
         :return:
         """
-        # initializing method variables
-        if self.background_map is None or self.frames is None:
-            self.background_map, self.frames = self.analyze_video_data(video_src, unwanted_objects)
+        # Analyzing raw image data
+        if self.pixel_background_frames_map is None or self.frames is None:
+            self.__analyze_video_data(video_src, unwanted_objects)
+
+        # Processing video data
+        if self.pixel_data_dict is None:
+            self.__process_video_data()
+
+        # Initialize Graph optimization algorithm with processed data
+        if self.optimizer is None:
+            self.optimizer = GraphOptimizer(self.pixel_data_dict, self.frames, self.alpha)
+
+        # Run optimization process
+        merged_image = self.optimizer.optimize_input(self.output_path)
 
         # reconstruct new image
-        constructed_image = self._construct_image()
-        # cv2.imwrite(self.output_path + str(int(self.alpha * 100)) + "_output.png", constructed_image)
-        # ut.show_image("new", constructed_image)
+        ut.log_or_print("[INFO] Constructing Image...")
+        cv2.imwrite(self.output_name_folder + str(int(self.alpha * 100)) + "_final_output.png", (merged_image * 255).astype('uint8'))
 
     """ ============================ Streaming Functions ============================ """
 
@@ -198,7 +210,7 @@ class VideoDetector:
         :param unwanted_objects: a list of unwanted objects
         :return:
         """
-        vs, fps = self.initialize_video_stream(video_src)
+        vs, fps = self.__initialize_video_stream(video_src)
 
         # loop over the frames from the video stream
         ret, frame = vs.read()
@@ -219,7 +231,7 @@ class VideoDetector:
             fps.update()
             ret, frame = vs.read()
 
-        self.destruct_video_stream(vs, fps)
+        self.__destruct_video_stream(vs, fps)
 
 
 
