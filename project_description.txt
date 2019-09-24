@@ -22,3 +22,5 @@ frame processing took about a minute. The solution that came to mind was using o
 Since typical videos go for at least 30 frames per second we ca assume that there is not to much movement between
 every 10 frames, so we can run the video smoothly and every 10 frames stop for a detection and get the same speed
 of image generation.
+
+872743

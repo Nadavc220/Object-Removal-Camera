@@ -123,7 +123,7 @@ class VideoDetector:
                 detections = self.frame_detector.detect_frame(frame, unwanted_objects, min_confidence=MIN_CONFIDENCE)
 
                 if QUANTIZE_IMAGE:  # perform RGB quantization on frame before storage
-                    quantization_output = Quantization.quantize_rgb(frame, QUANTIZATION_COLOR_COUNT, QUANTIZATION_ITERS)
+                    quantization_output = Quantization.quantize_rgb_image(frame, QUANTIZATION_COLOR_COUNT, QUANTIZATION_ITERS)
                     frame = quantization_output[0].astype('uint8')
 
                 start = time.time()
@@ -163,15 +163,8 @@ class VideoDetector:
                 if len(self.pixel_background_frames_map[row, col]) == 0:
                     self.pixel_background_frames_map[row, col] = list(range(len(self.frames)))
 
-                # if all frames were found as background mark first frame as best candidate
-                if len(self.pixel_background_frames_map[row, col]) == len(self.frames):
-                    self.pixel_data_dict[(row, col)] = PixelData(row, col, 0,
-                                                                 {k: len(self.frames) for k in range(len(self.frames))},
-                                                                 [(k, len(self.frames)) for k in
-                                                                  range(len(self.frames))])
-                else:
-                    self.pixel_data_dict[(row, col)] = calculate_pixel_data(row, col, self.pixel_background_frames_map,
-                                                                               self.frames)
+                pixel_data = PixelData(row, col, self.pixel_background_frames_map, self.frames)
+                self.pixel_data_dict[(row, col)] = pixel_data
             end = time.time()
             ut.log_or_print_time(start, end)
 
@@ -219,7 +212,7 @@ class VideoDetector:
             detections = self.frame_detector.detect_frame(frame, min_confidence=MIN_CONFIDENCE, unwanted_objects=unwanted_objects)
 
             if QUANTIZE_IMAGE:
-                quantization_output = Quantization.quantize_rgb(frame, QUANTIZATION_COLOR_COUNT, QUANTIZATION_ITERS)
+                quantization_output = Quantization.quantize_rgb_image(frame, QUANTIZATION_COLOR_COUNT, QUANTIZATION_ITERS)
                 frame = quantization_output[0].astype('uint8')
             ut.show_image("Video", frame, detections=detections, size_factor=STREAM_SIZE_FACTOR, video=True)
 
@@ -232,6 +225,3 @@ class VideoDetector:
             ret, frame = vs.read()
 
         self.__destruct_video_stream(vs, fps)
-
-
-

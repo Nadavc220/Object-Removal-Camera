@@ -72,40 +72,42 @@ class GraphOptimizer:
                 pixel_data = self.pixel_data_dict[(row, col)]
                 local_color_err = pixel_node.sum_edge_values()
                 local_cluster_size_err = pixel_node.value
-                pixel_options = pixel_data.sorted_frame_cluster_list
+                pixel_options = pixel_data.sorted_idx_cluster_list
 
                 initial_local_error = self.alpha * local_color_err + (1 - self.alpha) * local_cluster_size_err
-                best_pixel_source_frame = pixel_data.source_frame
+                best_pixel_color_idx = pixel_data.chosen_color_idx
                 curr_best_local_err = initial_local_error
                 local_change = False
-                for frame, cluster_size in pixel_options:
+                for color_idx, cluster_size in pixel_options:
                     # trying to find a new better frame
-                    if frame != pixel_data.source_frame:
+                    if color_idx != pixel_data.chosen_color_idx:
                         # calculate new cluster size err
                         cluster_size_local_err = abs(pixel_data.get_largest_cluster_size() - cluster_size)
 
                         # calculate edges errors
                         neighbours = pixel_node.edges.keys()
                         local_color_err = 0
-                        for i, j in neighbours:
-                            local_color_err += ut.euclidean_dist(self.frames[frame][row, col], self.pixel_data_dict[(i, j)].get_color_value(self.frames))
+                        for neighbor in neighbours:
+                            local_color_err += ut.euclidean_dist(pixel_data.get_color_by_idx(color_idx),
+                                                                 self.pixel_data_dict[neighbor].get_color_value())
                         new_total_err = self.alpha * local_color_err + (1 - self.alpha) * cluster_size_local_err
                         if new_total_err < curr_best_local_err:
                             local_change = True
                             curr_best_local_err = new_total_err
-                            best_pixel_source_frame = frame
+                            best_pixel_color_idx = color_idx
                             changed_pixel_count += 1
 
                 if local_change:
                     changed = True
                     # update pixel info
-                    self.pixel_data_dict[(row, col)].source_frame = best_pixel_source_frame
-                    self.graph[(row, col)].value = abs(pixel_data.get_largest_cluster_size() - pixel_data.get_used_cluster_size())
-                    for i, j in self.graph[(row, col)].edges.keys():
-                        color_err_value = ut.euclidean_dist(self.frames[best_pixel_source_frame][row, col], self.pixel_data_dict[(i, j)].get_color_value(self.frames))
-                        self.graph[(row, col)].edges[(i, j)] = color_err_value
-                        self.graph[(i, j)].edges[(row, col)] = color_err_value
-                        curr_dirty_pixels.add((i, j))
+                    self.pixel_data_dict[pixel].chosen_color_idx = best_pixel_color_idx
+                    self.graph[pixel].value = abs(pixel_data.get_largest_cluster_size() - pixel_data.get_used_cluster_size())
+                    for neighbor in self.graph[pixel].edges.keys():
+                        color_err_value = ut.euclidean_dist(pixel_data.get_color_value(),
+                                                            self.pixel_data_dict[neighbor].get_color_value())
+                        self.graph[pixel].edges[neighbor] = color_err_value
+                        self.graph[neighbor].edges[pixel] = color_err_value
+                        curr_dirty_pixels.add(neighbor)
                     self._total_err -= (initial_local_error - curr_best_local_err)
                     ut.log_or_print("Optimized pixel (" + str(row) + ", " + str(col) + "); Curr error: " + str(self._total_err), log_msg=False, print_msg=False)
             iteration += 1
@@ -137,30 +139,27 @@ class GraphOptimizer:
         cluster_size_diff_err = 0
 
         for row, col in ut.row_col_generator(self.shape, print_percentage=True):
-
             # calculate error value for distance from best cluster size
             pixel_data = self.pixel_data_dict[(row, col)]
-            value = abs(pixel_data.get_largest_cluster_size() - pixel_data.get_used_cluster_size())
-            self.graph[(row, col)].value = value
-            cluster_size_diff_err += value
+            cluster_size_err = abs(pixel_data.get_largest_cluster_size() - pixel_data.get_used_cluster_size())
+            self.graph[(row, col)].value = cluster_size_err
+            cluster_size_diff_err += cluster_size_err
 
             # calculate error values for distance of color from neighbours
             if row < self.shape[0] - 1:
                 # evaluate neighbour under pixel
                 neighbour_data = self.pixel_data_dict[(row + 1, col)]
-                value = ut.euclidean_dist(pixel_data.get_color_value(self.frames),
-                                          neighbour_data.get_color_value(self.frames))
-                self.graph[(row, col)].edges[(row + 1, col)] = value
-                self.graph[(row + 1, col)].edges[(row, col)] = value
-                color_diff_err += value
+                color_err = ut.euclidean_dist(pixel_data.get_color_value(), neighbour_data.get_color_value())
+                self.graph[(row, col)].edges[(row + 1, col)] = color_err
+                self.graph[(row + 1, col)].edges[(row, col)] = color_err
+                color_diff_err += color_err
             if col < self.shape[1] - 1:
                 # evaluate neighbour to the right of pixel
                 neighbour_data = self.pixel_data_dict[(row, col + 1)]
-                value = ut.euclidean_dist(pixel_data.get_color_value(self.frames),
-                                          neighbour_data.get_color_value(self.frames))
-                self.graph[(row, col)].edges[(row, col + 1)] = value
-                self.graph[(row, col + 1)].edges[(row, col)] = value
-                color_diff_err += value
+                color_err = ut.euclidean_dist(pixel_data.get_color_value(), neighbour_data.get_color_value())
+                self.graph[(row, col)].edges[(row, col + 1)] = color_err
+                self.graph[(row, col + 1)].edges[(row, col)] = color_err
+                color_diff_err += color_err
         self._total_err = self.alpha * color_diff_err + (1 - self.alpha) * cluster_size_diff_err
         end = time.time()
         ut.log_or_print_time(start, end)
@@ -182,7 +181,7 @@ class GraphOptimizer:
         image = np.zeros((self.shape[0], self.shape[1], 3))
         for row, col in ut.row_col_generator(self.shape, print_percentage=False):
             pixel_data = self.pixel_data_dict[(row, col)]
-            image[row, col] = pixel_data.get_color_value(self.frames)
+            image[row, col] = pixel_data.get_color_value()
         return image
 
 

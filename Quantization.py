@@ -1,7 +1,6 @@
 # =========== Imports =========== #
+import warnings
 import numpy as np
-from scipy.misc import imread as imread
-import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans as km
 
 # =========== Constants =========== #
@@ -25,7 +24,7 @@ trans_mat = np.array([[0.299, 0.587, 0.114], [0.596, -0.275, -0.321], [0.212, -0
 # =========== Main Functions =========== #
 
 
-def quantize_rgb(im_orig, n_quant, n_iter):
+def quantize_rgb_image(im_orig, n_quant, n_iter):
     """
     Converts a given RGB image color spectrum to be n_quant rgb colors in the most optimal way.
     :param im_orig: the given image.
@@ -34,22 +33,32 @@ def quantize_rgb(im_orig, n_quant, n_iter):
     :return: [im, error] where im is a quantized image and error is a list of error values from all
     optimization iterations.
     """
-    error = []
-
     # in this algorithm we will use the k-means algorithm, to help us with that we
     #  shall change the images shape to 2 dimensions
     width, height, color_num = im_orig.shape
     resh_im = np.reshape(im_orig, (width * height, color_num))
 
-    # getting initial partition and quants
-    partition, quants = get_kmeans_initial_partition(resh_im, n_quant, error)
-
-    # optimizing partition and quants
-    partition, quants = optimize_kmeans_quantization_vals(resh_im, partition, n_quant, n_iter, error)
+    # calculating k-means
+    partition, quants, error = quantize_rgb_list(resh_im, n_quant, n_iter)
 
     # reshaping image and updating color values
     quant_im = np.reshape(partition[quants], (width, height, color_num))
     return [quant_im, np.array(error)]
+
+
+def quantize_rgb_list(rgb_list, n_quant, n_iter):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        error = []
+        n_quant = min(n_quant, len(rgb_list))
+
+        # getting initial partition and quants
+        partition, quants = get_kmeans_initial_partition(rgb_list, n_quant, error)
+
+        # optimizing partition and quants
+        partition, quants = optimize_kmeans_quantization_vals(rgb_list, partition, n_quant, n_iter, error)
+
+        return partition, quants, error
 
 
 def get_kmeans_initial_partition(resh_im, n_quant, error):
@@ -60,7 +69,7 @@ def get_kmeans_initial_partition(resh_im, n_quant, error):
     :param error: an array holding error values for partition and quants.
     :return: the initial partition and quants.
     """
-    k_means = km(n_clusters=n_quant, max_iter=1)
+    k_means = km(n_clusters=n_quant, max_iter=1, n_init=1)
     quants = k_means.fit_predict(resh_im)
     partition = k_means.cluster_centers_
     error.append(k_means.inertia_)
@@ -79,7 +88,7 @@ def optimize_kmeans_quantization_vals(resh_im, partition, n_quant, n_iter,  erro
     """
     quants = []
     for i in range(n_iter - 1):
-        k_means = km(n_clusters=n_quant, init=partition, max_iter=1)
+        k_means = km(n_clusters=n_quant, init=partition, max_iter=1, n_init=1)
         quants = k_means.fit_predict(resh_im)
         new_partition = k_means.cluster_centers_
         # checking for convergence
