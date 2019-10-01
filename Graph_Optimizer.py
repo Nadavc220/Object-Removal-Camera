@@ -6,10 +6,11 @@ import cv2
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import copy
 
 
 """ ============================ Constants ============================ """
-ITERS = 100
+ITERS = 1000
 OUTPUT_MID_OPTIMIZED = True
 
 """ ============================ Class ============================ """
@@ -17,7 +18,7 @@ OUTPUT_MID_OPTIMIZED = True
 
 class GraphOptimizer:
 
-    def __init__(self, pixel_data_dict, frames, alpha=0.5):
+    def __init__(self, pixel_data_dict, frames, alpha=1000):
         # receiving arguments
         self.pixel_data_dict = pixel_data_dict
         self.frames = frames
@@ -46,6 +47,7 @@ class GraphOptimizer:
         iteration = 0
         changed = True
         all_dirty = True
+        pixel_data_dict_copy = copy.deepcopy(self.pixel_data_dict)
 
         iteration_error_rates = []
         curr_dirty_pixels = set()
@@ -69,12 +71,12 @@ class GraphOptimizer:
                 # initializing pixel base info
                 row, col = pixel
                 pixel_node = self.graph[pixel]
-                pixel_data = self.pixel_data_dict[(row, col)]
+                pixel_data = pixel_data_dict_copy[(row, col)]
                 local_color_err = pixel_node.sum_edge_values()
                 local_cluster_size_err = pixel_node.value
                 pixel_options = pixel_data.sorted_idx_cluster_list
 
-                initial_local_error = self.alpha * local_color_err + (1 - self.alpha) * local_cluster_size_err
+                initial_local_error = self.alpha * local_color_err + local_cluster_size_err
                 best_pixel_color_idx = pixel_data.chosen_color_idx
                 curr_best_local_err = initial_local_error
                 local_change = False
@@ -89,8 +91,8 @@ class GraphOptimizer:
                         local_color_err = 0
                         for neighbor in neighbours:
                             local_color_err += ut.euclidean_dist(pixel_data.get_color_by_idx(color_idx),
-                                                                 self.pixel_data_dict[neighbor].get_color_value())
-                        new_total_err = self.alpha * local_color_err + (1 - self.alpha) * cluster_size_local_err
+                                                                 pixel_data_dict_copy[neighbor].get_color_value())
+                        new_total_err = self.alpha * local_color_err + cluster_size_local_err
                         if new_total_err < curr_best_local_err:
                             local_change = True
                             curr_best_local_err = new_total_err
@@ -100,11 +102,11 @@ class GraphOptimizer:
                 if local_change:
                     changed = True
                     # update pixel info
-                    self.pixel_data_dict[pixel].chosen_color_idx = best_pixel_color_idx
+                    pixel_data_dict_copy[pixel].chosen_color_idx = best_pixel_color_idx
                     self.graph[pixel].value = abs(pixel_data.get_largest_cluster_size() - pixel_data.get_used_cluster_size())
                     for neighbor in self.graph[pixel].edges.keys():
                         color_err_value = ut.euclidean_dist(pixel_data.get_color_value(),
-                                                            self.pixel_data_dict[neighbor].get_color_value())
+                                                            pixel_data_dict_copy[neighbor].get_color_value())
                         self.graph[pixel].edges[neighbor] = color_err_value
                         self.graph[neighbor].edges[pixel] = color_err_value
                         curr_dirty_pixels.add(neighbor)
@@ -118,7 +120,7 @@ class GraphOptimizer:
             ut.log_or_print("[INFO] Current error rate: " + str(self._total_err))
             if OUTPUT_MID_OPTIMIZED:
                 image = (self.__construct_optimized_image() * 255).astype('uint8')
-                cv2.imwrite(output_path + str(int(self.alpha * 100)) + "_" + str(iteration) + "_output.png", image)
+                cv2.imwrite(output_path + str(self.alpha) + "_" + str(iteration) + "_output.png", image)
 
         end = time.time()
         ut.log_or_print("[INFO] Optimization complete after " + str(iteration) + " iterations")
@@ -160,7 +162,7 @@ class GraphOptimizer:
                 self.graph[(row, col)].edges[(row, col + 1)] = color_err
                 self.graph[(row, col + 1)].edges[(row, col)] = color_err
                 color_diff_err += color_err
-        self._total_err = self.alpha * color_diff_err + (1 - self.alpha) * cluster_size_diff_err
+        self._total_err = self.alpha * color_diff_err + cluster_size_diff_err
         end = time.time()
         ut.log_or_print_time(start, end)
         ut.log_or_print("Current Error: " + str(self._total_err))

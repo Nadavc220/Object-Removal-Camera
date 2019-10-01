@@ -89,7 +89,7 @@ class VideoDetector:
     def refresh(self, output_name_folder, alpha):
         self.alpha = alpha
         self.output_name_folder = output_name_folder
-        self.output_path = self.output_name_folder + str((int(alpha * 100))) + '/'
+        self.output_path = self.output_name_folder + str(alpha) + '/'
         if self.optimizer is not None:
             self.optimizer.refresh(alpha)
 
@@ -192,7 +192,7 @@ class VideoDetector:
 
         # reconstruct new image
         ut.log_or_print("[INFO] Constructing Image...")
-        cv2.imwrite(self.output_name_folder + str(int(self.alpha * 100)) + "_final_output.png", (merged_image * 255).astype('uint8'))
+        cv2.imwrite(self.output_name_folder + str(self.alpha) + "_final_output.png", (merged_image * 255).astype('uint8'))
 
     """ ============================ Streaming Functions ============================ """
 
