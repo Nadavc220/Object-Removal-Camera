@@ -335,14 +335,14 @@ def get_neighbour_indices(row, col, shape):
 """ ============================= Log Functions ============================= """
 
 
-def log_or_print(message, log_msg=True, print_msg=True):
+def log_or_print(message, log_msg=False, print_msg=True):
     if log_msg:
         logging.info(message)
     if print_msg:
         print(message)
 
 
-def log_or_print_time(start, end, log_msg=True, print_msg=True):
+def log_or_print_time(start, end, log_msg=False, print_msg=True):
     total_secs = end - start
     if total_secs < 60:
         msg = "Done after {:.6f} seconds".format(total_secs)

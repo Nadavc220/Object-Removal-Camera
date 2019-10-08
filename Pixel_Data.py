@@ -22,7 +22,7 @@ class PixelData:
     def get_used_cluster_size(self):
         return self.idx_to_cluster_size_dict[self.chosen_color_idx]
 
-    def chosen_color_idx(self):
+    def get_chosen_color_idx(self):
         return self.chosen_color_idx
 
     # def get_cluster_size_by_frame(self, frame_idx):
@@ -61,7 +61,7 @@ class PixelData:
         self.colors, quants, error = quantize_rgb_list(colors, n_quant, n_iter)
         idx_to_cluster_size_dict = {i: 0 for i in range(len(self.colors))}
         for i in range(len(quants)):
-            idx_to_cluster_size_dict[quants[i]] += sorted_frame_cluster_list[i][1]
+            idx_to_cluster_size_dict[quants[i]] += 1
         sorted_idx_cluster_list = [(c, idx_to_cluster_size_dict[c]) for c in idx_to_cluster_size_dict.keys()]
         sorted_idx_cluster_list.sort(key=lambda x: x[1], reverse=True)
 
