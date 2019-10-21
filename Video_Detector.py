@@ -21,7 +21,7 @@ STREAM_SIZE_FACTOR = 1
 SHOW_VIDEO = False
 
 QUANTIZE_IMAGE = False
-QUANTIZATION_COLOR_COUNT = 15
+QUANTIZATION_COLOR_COUNT = 100
 QUANTIZATION_ITERS = 3
 
 QUANTIZE_FRAME_WIDE = False
@@ -153,20 +153,21 @@ class VideoDetector:
         ut.log_or_print("[INFO] Video analyzing ended after {:.6f} seconds".format(end_analyze - start_analyze))
 
     def __process_video_data(self):
-            ut.log_or_print("[INFO] Processing video data...")
-            start = time.time()
-            self.pixel_data_dict = {}
-            ut.log_or_print("[INFO] Initializing pixels data structures...")
-            for row, col in ut.row_col_generator(self.frames[0].shape[:2]):
+        ut.log_or_print("[INFO] Processing video data...")
+        start = time.time()
+        self.pixel_data_dict = {}
+        ut.log_or_print("[INFO] Initializing pixels data structures...")
+        for row, col in ut.row_col_generator(self.frames[0].shape[:2]):
 
-                # if no background frames were found for this pixel check all frames as background
-                if len(self.pixel_background_frames_map[row, col]) == 0:
-                    self.pixel_background_frames_map[row, col] = list(range(len(self.frames)))
+            # if no background frames were found for this pixel check all frames as background
+            if len(self.pixel_background_frames_map[row, col]) == 0:
+                self.pixel_background_frames_map[row, col] = list(range(len(self.frames)))
 
-                pixel_data = PixelData(row, col, self.pixel_background_frames_map, self.frames)
-                self.pixel_data_dict[(row, col)] = pixel_data
-            end = time.time()
-            ut.log_or_print_time(start, end)
+            pixel_data = PixelData(row, col, self.pixel_background_frames_map, self.frames)
+            self.pixel_data_dict[(row, col)] = pixel_data
+        end = time.time()
+        ut.log_or_print_time(start, end)
+        # self.output_color_distance_maps()
 
     def object_sensitive_video_merge(self, video_src, unwanted_objects):
         """
@@ -193,6 +194,17 @@ class VideoDetector:
         # reconstruct new image
         ut.log_or_print("[INFO] Constructing Image...")
         cv2.imwrite(self.output_name_folder + str(int(self.alpha * 100)) + "_final_output.png", (merged_image * 255).astype('uint8'))
+
+        # find closest frames of video
+        ut.log_or_print("[INFO] Finding closest frames to constructed image...")
+        sorted_frames = ut.sort_closest_frames(merged_image, self.frames, self.pixel_data_dict, self.pixel_background_frames_map)
+        count = 0
+        for idx in sorted_frames:
+            cv2.imwrite(self.output_name_folder + str(count) + "_" + str(idx) + "_sim.png",
+                        (self.frames[idx] * 255).astype('uint8'))
+            count += 1
+
+
 
     """ ============================ Streaming Functions ============================ """
 

@@ -15,6 +15,8 @@ class PixelData:
         self.sorted_idx_cluster_list = None
         self.__calculate_pixel_data(background_map, frames)
         self.chosen_color_idx = self.sorted_idx_cluster_list[0][0]
+        self.color_max_distance = self.__calculate_color_max_distance()
+        a = 2
 
     def get_largest_cluster_size(self):
         return self.sorted_idx_cluster_list[0][1]
@@ -99,3 +101,13 @@ class PixelData:
                 filtered_dict[key] = pixel_clusters[key]
                 seen_color_values.append(color_tup)
         return filtered_dict
+
+    def __calculate_color_max_distance(self):
+        max_dist = 0
+        if len(self.colors > 1):
+            for i in range(len(self.colors)):
+                for j in range(i, len(self.colors)):
+                    curr_dist = ut.euclidean_dist(self.colors[i], self.colors[j])
+                    if curr_dist > max_dist:
+                        max_dist = curr_dist
+        return max_dist

@@ -9,6 +9,8 @@ import numpy as np
 import cv2
 import math
 import logging
+from copy import deepcopy
+
 
 """ ============================= Constants ============================= """
 GRAY = 0
@@ -265,7 +267,7 @@ def unite_detecions(detections):
     return new
 
 
-""" ============================= Image Pblic Functions ============================= """
+""" ============================= Image Public Functions ============================= """
 
 
 def show_image(winname, image, size_factor=1, detections=None, video=False):
@@ -314,6 +316,43 @@ def image_resize(image, width=None, height=None, inter=cv2.INTER_AREA):
 
     # return the resized image
     return resized
+
+def output_color_distance_maps(self):
+    image = self.frames[0]
+    for i in np.arange(0.1, 0.5, 0.1):
+        copy_im = deepcopy(image)
+        for pixel_data in self.pixel_data_dict.values():
+            if pixel_data.color_max_distance > i:
+                copy_im[pixel_data.row, pixel_data.col] = [0, 255, 0]
+        cv2.imwrite(self.output_name_folder + "distance_" + str(int(i * 100)) + ".png",
+                    (copy_im * 255).astype('uint8'))
+    for i in np.arange(0.5, 1.5, 0.02):
+        copy_im = deepcopy(image)
+        for pixel_data in self.pixel_data_dict.values():
+            if pixel_data.color_max_distance > i:
+                copy_im[pixel_data.row, pixel_data.col] = [0, 255, 0]
+        cv2.imwrite(self.output_name_folder + "distance_" + str(int(i * 100)) + ".png",
+                    (copy_im * 255).astype('uint8'))
+
+def get_pixel_color_dist_map(pixel_data_dict, dist):
+    pixels = []
+    for pixel_data in pixel_data_dict.values():
+        if pixel_data.color_max_distance > dist:
+            pixels.append((pixel_data.row, pixel_data.col))
+    return pixels
+
+
+def sort_closest_frames(image, frames, pixel_data_dict, pixel_background_frames_map, color_dist_thresh=0.5):
+    pixels_on_check = get_pixel_color_dist_map(pixel_data_dict, color_dist_thresh)
+    frame_score_list = []
+    for frame_idx in range(len(frames)):
+        score = 0
+        for pixel in pixels_on_check:
+            row, col = pixel
+            if frame_idx in pixel_background_frames_map(pixel):
+                score += euclidean_dist(image[row, col], frames[frame_idx][row, col])
+        frame_score_list.append((frame_idx, score))
+    return [f[0] for f in sorted(frame_score_list, key=lambda x: x[1])]
 
 
 """ ============================= Pixel Calculations ============================= """

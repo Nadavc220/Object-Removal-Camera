@@ -15,7 +15,7 @@ from yolo import yolo_object_detection as yod
 
 """ ============================ Constants ============================ """
 FILES_PATH = "files/"
-OUTPUT_PATH = "output/"
+OUTPUT_PATH = "output3/"
 # FILES = ["train.mov", "nyc2.mp4", "wimbeldon2.mp4"]
 FILES = ["nyc2.mp4"]
 UNWANTED_OBJECTS = ["person"]
