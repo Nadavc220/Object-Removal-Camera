@@ -34,14 +34,15 @@ class DetectionStructure:
         self.unwanted_objects = unwanted_objects
         self.min_confidence = min_confidence
 
-    def add_detection(self, detection):
+    def add_detection(self, detection, resize_factor=None):
         if detection.my_class not in self.unwanted_objects:
             if detection.my_class in self.wanted_detections:
                 self.wanted_detections[detection.my_class].append(detection)
             else:
                 self.wanted_detections[detection.my_class] = [detection]
         else:
-            detection.bounding_box.expand(-0.1)
+            if resize_factor is not None:
+                detection.bounding_box.expand(resize_factor)
             if detection.my_class in self.unwanted_detections:
                 self.unwanted_detections[detection.my_class].append(detection)
             else:
@@ -148,6 +149,20 @@ class Box:
         new_end_col = min(self.end_col + (self.end_col - self.start_col) * ratio, 1)
         self.start_row, self.start_col, self.end_row, self.end_col = new_start_row, new_start_col,\
                                                                      new_end_row, new_end_col
+
+    def expand_int(self, ratio, shape):
+        """
+        Add a ratio of the image size.
+        :param ratio: the given ratio (0.1 will add 10% of the image)
+        :param limits: the image width and height
+        """
+        new_start_row = int(max(self.start_row - (self.end_row - self.start_row) * ratio, 0))
+        new_end_row = int(min(self.end_row + (self.end_row - self.start_row) * ratio, shape[1] - 1))
+        new_start_col = int(max(self.start_col - (self.end_col - self.start_col) * ratio, 0))
+        new_end_col = int(min(self.end_col + (self.end_col - self.start_col) * ratio, shape[1] - 1))
+        self.start_row, self.start_col, self.end_row, self.end_col = new_start_row, new_start_col, \
+                                                                     new_end_row, new_end_col
+
 
     def __repr__(self):
         return self.__str__()
@@ -270,7 +285,7 @@ def unite_detecions(detections):
 """ ============================= Image Public Functions ============================= """
 
 
-def show_image(winname, image, size_factor=1, detections=None, video=False):
+def show_image(image, size_factor=1, detections=None, video=False):
     image_copy = np.copy(image)
 
     # drawing detections on image of given
@@ -282,7 +297,7 @@ def show_image(winname, image, size_factor=1, detections=None, video=False):
     resized_image = image_resize(image_copy, shape[0], shape[1])
 
     # show image and close it instantly if we are streaming a video, else wait for key
-    cv2.imshow(winname, resized_image)
+    cv2.imshow("image", resized_image)
     if not video:
         cv2.waitKey(0)
 
@@ -317,6 +332,31 @@ def image_resize(image, width=None, height=None, inter=cv2.INTER_AREA):
     # return the resized image
     return resized
 
+
+def get_image_median(frames, pixel_background_frames_map, percentile=0.5):
+    gray_frames = [cv2.cvtColor((frame * 255).astype('uint8'), cv2.COLOR_BGR2GRAY) for frame in frames]
+    med_image = np.zeros_like(frames[0])
+    for row, col in row_col_generator(gray_frames[0].shape, print_percentage=False):
+        if (len(pixel_background_frames_map[(row, col)])) == 0:
+            pixel_background_frames_map[(row, col)] = list(range(len(frames)))
+        intensity_sorted_value = sorted(pixel_background_frames_map[(row, col)],
+                                        key=lambda f: gray_frames[f][row, col])
+        if len(intensity_sorted_value) > 0:
+            frame_index = intensity_sorted_value[int(len(intensity_sorted_value) * percentile)]
+            med_image[row, col] = frames[frame_index][row, col]
+    return med_image
+
+
+def get_image_average(frames, pixel_background_frames_map, percentile=0.5):
+    med_image = np.zeros_like(frames[0])
+    for row, col in row_col_generator(frames[0].shape[:2], print_percentage=False):
+        if (len(pixel_background_frames_map[(row, col)])) == 0:
+            pixel_background_frames_map[(row, col)] = list(range(len(frames)))
+        color_values = [frames[i][row, col] for i in pixel_background_frames_map[(row, col)]]
+        med_image[row, col] = np.sum(color_values, axis=0) / len(color_values)
+    return med_image * 255
+
+
 def output_color_distance_maps(self):
     image = self.frames[0]
     for i in np.arange(0.1, 0.5, 0.1):
@@ -334,10 +374,11 @@ def output_color_distance_maps(self):
         cv2.imwrite(self.output_name_folder + "distance_" + str(int(i * 100)) + ".png",
                     (copy_im * 255).astype('uint8'))
 
+
 def get_pixel_color_dist_map(pixel_data_dict, dist):
     pixels = []
     for pixel_data in pixel_data_dict.values():
-        if pixel_data.color_max_distance > dist:
+        if pixel_data.color_max_distance < dist:
             pixels.append((pixel_data.row, pixel_data.col))
     return pixels
 
@@ -349,7 +390,7 @@ def sort_closest_frames(image, frames, pixel_data_dict, pixel_background_frames_
         score = 0
         for pixel in pixels_on_check:
             row, col = pixel
-            if frame_idx in pixel_background_frames_map(pixel):
+            if frame_idx in pixel_background_frames_map[pixel]:
                 score += euclidean_dist(image[row, col], frames[frame_idx][row, col])
         frame_score_list.append((frame_idx, score))
     return [f[0] for f in sorted(frame_score_list, key=lambda x: x[1])]
@@ -400,8 +441,9 @@ def log_or_print_time(start, end, log_msg=False, print_msg=True):
 """ ============================= Pixel Scaling Functions ============================= """
 
 
-def euclidean_dist(pixel1, pixel2):
+def euclidean_dist(pixel1, pixel2):  # todo temporarily change to manhattan distance
     return math.sqrt((pixel1[0] - pixel2[0])**2 + (pixel1[1] - pixel2[1])**2 + (pixel1[2] - pixel2[2])**2)
+    # return np.abs(pixel1[0] - pixel2[0]) + np.abs(pixel1[1] - pixel2[1]) + np.abs(pixel1[2] - pixel2[2])
 
 
 def euclidean_norm(pixel):
@@ -411,29 +453,27 @@ def euclidean_norm(pixel):
 """ ============================= Pixel Iterators ============================= """
 
 
-def frames_generator(shape, print_percentage=True):
+def frames_generator(start_row, end_row, start_col, end_col, print_percentage=True):
     count = 0
-    row_lower_lim, row_upper_lim, col_lower_lim, col_upper_lim = 0, shape[0], 0, shape[1]
-    while row_lower_lim < row_upper_lim:
-        for col in range(col_lower_lim, col_upper_lim):
-            yield row_lower_lim, col
+    while start_row <= end_row and start_col <= end_col:
+        for col in range(start_col, end_col + 1):
+            yield start_row, col
             count += 1
-        for row in range(row_lower_lim + 1, row_upper_lim):
-            yield row, col_upper_lim - 1
+        for row in range(start_row + 1, end_row + 1):
+            yield row, end_col
             count += 1
-        for col in reversed(range(col_lower_lim, col_upper_lim - 1)):
-            yield row_upper_lim - 1, col
+        for col in reversed(range(start_col - 1, end_col)):
+            yield end_row, col
             count += 1
-        for row in reversed(range(row_lower_lim + 1, row_upper_lim - 1)):
-            yield row, col_lower_lim
+        for row in reversed(range(start_row + 1, end_row)):
+            yield row, start_col
             count += 1
-        row_lower_lim += 1
-        row_upper_lim -= 1
-        col_lower_lim += 1
-        col_upper_lim -= 1
-        if print_percentage:
-            print("Finished: " + str((count / (shape[0] * shape[1])) * 100) + "%")
-
+        start_row += 1
+        end_row -= 1
+        start_col += 1
+        end_col -= 1
+        # if print_percentage:
+        #     print("Finished: " + str((count / ((end_row - start_row) * (end_col - start_col) * 100))) + "%")
 
 def row_col_generator(shape, print_percentage=True):
     count = 0

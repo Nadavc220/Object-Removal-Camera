@@ -10,12 +10,15 @@ import my_utils as ut
 from yolo import yolo_object_detection as yod
 from Pixel_Data import *
 from Graph_Optimizer import *
+from Patch_Optimization import *
 import Quantization
 
 
 """ ============================ Constants ============================ """
 FPD = 8  # frames per detection
 MIN_CONFIDENCE = 0.05
+DETECTION_RESIZE_FACTOR = -0.1
+USED_CLOSE_PATCH_PERCENTAGE=0.15
 UNIFY_COLLISION = False
 STREAM_SIZE_FACTOR = 1
 SHOW_VIDEO = False
@@ -49,6 +52,7 @@ class VideoDetector:
         self.output_name_folder = ""
         self.output_path = ""
         self.alpha = 0
+        self.file_name = "No_Name"
 
     # ===================== General Class Methods =====================
 
@@ -95,7 +99,74 @@ class VideoDetector:
 
     # ===================== Video Detection Methods =====================
 
-    def __analyze_video_data(self, video_src, unwanted_objects, show_video=SHOW_VIDEO):
+    def object_sensitive_video_merge(self, video_src, unwanted_objects):
+        """
+        Receives a video path and unwanted objects list and returns a clean image.
+        :param video_src: the path for the video
+        :param unwanted_objects: a list of object we want to clean from the image
+        :return:
+        """
+        # Analyzing raw image data
+        if self.pixel_background_frames_map is None or self.frames is None:
+            self.__analyze_video_data(video_src, unwanted_objects, detection_resize_factor=DETECTION_RESIZE_FACTOR)
+
+        median_image = ut.get_image_median(self.frames, self.pixel_background_frames_map)
+        # average_image = ut.get_image_average(self.frames, self.pixel_background_frames_map)
+        # cv2.imwrite("average.png", average_image)
+        # return
+
+        # median_image = cv2.imread("10.png")
+
+
+        # # todo return this code back for normal flow, for debuggin leave unmarked.
+        # # Processing video data
+        # if self.pixel_data_dict is None:
+        #     self.__process_video_data()
+        #
+        # # Initialize Graph optimization algorithm with processed data
+        # if self.optimizer is None:
+        #     self.optimizer = GraphOptimizer(self.pixel_data_dict, self.frames, self.alpha)
+        #
+        # # Run optimization process
+        # merged_image = self.optimizer.optimize_input(self.output_path)  # at this point, merged_image is float
+        # merged_image = (merged_image * 255).astype('uint8')
+        # cv2.imwrite(self.output_name_folder + str(int(self.alpha * 100)) + "graph_optimized.png", merged_image)
+        # # merged_image = cv2.imread("temp/output.png")
+
+        # merged_image = cv2.imread("10.png")
+
+        # optimize patches of wanted objects
+        patch_optimizer = PatchOptimizer(self.frame_detector, self.frames, self.file_name, used_close_patches_percentage=USED_CLOSE_PATCH_PERCENTAGE)
+        # optimize unwanted objects
+        # merged_image = patch_optimizer.optimize_unwanted_objects(merged_image)
+        # optimize patches of wanted objects
+        merged_image = patch_optimizer.optimize_wanted_object_patches(median_image, self.pixel_background_frames_map)  # float image, edit: now it is not
+        # optimize patches of background pixels
+        # patch_optimizer.optimize_background_patches(merged_image)
+        cv2.imwrite("output/" + self.file_name + "/" + str(0.5 * 100) + ".png", merged_image)
+
+    # def get_pixels_to_refine(self, image):
+    #     detections = self.frame_detector.detect_frame(image, ['person'], detection_resize_factor=0.15)
+    #     pixel_batches = []
+    #     for detection_list in detections.unwanted_detections.values():
+    #         for detection in detection_list:
+    #             box = detection.bounding_box
+    #             start_row, end_row, start_col, end_col = box.start_row, box.end_row, box.start_col, box.end_col
+    #             patch = image[start_row:end_row, start_col:end_col]
+    #             # cv2.imwrite("patch.png", patch)
+    #             background_color = (patch[0][0] + patch[0][-1] + patch[-1][0] + patch[-1, -1]) // 4
+    #             background_color_image = np.full((500, 500, 3), background_color)
+    #             distance_from_background = np.zeros(patch.shape[:2])
+    #             for i in range(patch.shape[0]):
+    #                 for j in range(patch.shape[1]):
+    #                     distance_from_background[i, j] = ut.euclidean_dist(background_color.astype('int'),
+    #                                                                        patch[i, j].astype('int'))
+    #             distance_from_background = (distance_from_background * 255 / np.max(distance_from_background)).astype(
+    #                 'uint8')
+    #             thresh = np.mean(distance_from_background)
+    #             print(thresh)
+
+    def __analyze_video_data(self, video_src, unwanted_objects, detection_resize_factor=DETECTION_RESIZE_FACTOR, show_video=SHOW_VIDEO):
         ut.log_or_print("[INFO] Starting Video Analyzation... [INFO]")
         start_analyze = time.time()
         vs, fps = self.__initialize_video_stream(video_src)
@@ -120,7 +191,7 @@ class VideoDetector:
                 ut.log_or_print("[INFO] Frame: " + str(frame_index_count + 1))
                 ut.log_or_print("[INFO] Percentage Done: " + str(((frame_index_count + 1) / analized_frames_count) * 100))
 
-                detections = self.frame_detector.detect_frame(frame, unwanted_objects, min_confidence=MIN_CONFIDENCE)
+                detections = self.frame_detector.detect_frame(frame, unwanted_objects, min_confidence=MIN_CONFIDENCE, detection_resize_factor=detection_resize_factor)
 
                 if QUANTIZE_IMAGE:  # perform RGB quantization on frame before storage
                     quantization_output = Quantization.quantize_rgb_image(frame, QUANTIZATION_COLOR_COUNT, QUANTIZATION_ITERS)
@@ -140,7 +211,7 @@ class VideoDetector:
                 frame_index_count += 1
 
             if show_video:
-                ut.show_image("video", frame, size_factor=STREAM_SIZE_FACTOR, video=True)
+                ut.show_image(frame, size_factor=STREAM_SIZE_FACTOR, video=True)
             fps.update()
             # if self.quit_request_submitted():
             #     break
@@ -163,48 +234,10 @@ class VideoDetector:
             if len(self.pixel_background_frames_map[row, col]) == 0:
                 self.pixel_background_frames_map[row, col] = list(range(len(self.frames)))
 
-            pixel_data = PixelData(row, col, self.pixel_background_frames_map, self.frames)
+            pixel_data = PixelData(row, col, self.pixel_background_frames_map[(row, col)], self.frames)
             self.pixel_data_dict[(row, col)] = pixel_data
         end = time.time()
         ut.log_or_print_time(start, end)
-        # self.output_color_distance_maps()
-
-    def object_sensitive_video_merge(self, video_src, unwanted_objects):
-        """
-        Receives a video path and unwanted objects list and returns a clean image.
-        :param video_src: the path for the video
-        :param unwanted_objects: a list of object we want to clean from the image
-        :return:
-        """
-        # Analyzing raw image data
-        if self.pixel_background_frames_map is None or self.frames is None:
-            self.__analyze_video_data(video_src, unwanted_objects)
-
-        # Processing video data
-        if self.pixel_data_dict is None:
-            self.__process_video_data()
-
-        # Initialize Graph optimization algorithm with processed data
-        if self.optimizer is None:
-            self.optimizer = GraphOptimizer(self.pixel_data_dict, self.frames, self.alpha)
-
-        # Run optimization process
-        merged_image = self.optimizer.optimize_input(self.output_path)
-
-        # reconstruct new image
-        ut.log_or_print("[INFO] Constructing Image...")
-        cv2.imwrite(self.output_name_folder + str(int(self.alpha * 100)) + "_final_output.png", (merged_image * 255).astype('uint8'))
-
-        # find closest frames of video
-        ut.log_or_print("[INFO] Finding closest frames to constructed image...")
-        sorted_frames = ut.sort_closest_frames(merged_image, self.frames, self.pixel_data_dict, self.pixel_background_frames_map)
-        count = 0
-        for idx in sorted_frames:
-            cv2.imwrite(self.output_name_folder + str(count) + "_" + str(idx) + "_sim.png",
-                        (self.frames[idx] * 255).astype('uint8'))
-            count += 1
-
-
 
     """ ============================ Streaming Functions ============================ """
 
@@ -226,7 +259,7 @@ class VideoDetector:
             if QUANTIZE_IMAGE:
                 quantization_output = Quantization.quantize_rgb_image(frame, QUANTIZATION_COLOR_COUNT, QUANTIZATION_ITERS)
                 frame = quantization_output[0].astype('uint8')
-            ut.show_image("Video", frame, detections=detections, size_factor=STREAM_SIZE_FACTOR, video=True)
+            ut.show_image(frame, detections=detections, size_factor=STREAM_SIZE_FACTOR, video=True)
 
             # if the `q` key was pressed, break from the loop
             if self.quit_request_submitted():

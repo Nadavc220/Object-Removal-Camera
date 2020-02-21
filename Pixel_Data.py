@@ -16,7 +16,7 @@ class PixelData:
         self.__calculate_pixel_data(background_map, frames)
         self.chosen_color_idx = self.sorted_idx_cluster_list[0][0]
         self.color_max_distance = self.__calculate_color_max_distance()
-        a = 2
+        self.is_pure_background = (len(background_map) == len(frames))
 
     def get_largest_cluster_size(self):
         return self.sorted_idx_cluster_list[0][1]
@@ -45,7 +45,7 @@ class PixelData:
         :param frames: all frames gathered from the video.
         :return: PixelData object of the given row, col pixel
         """
-        if len(background_map[(self.row, self.col)]) == len(frames):
+        if len(background_map) == len(frames):
             sorted_frame_cluster_list = [(k, len(frames)) for k in range(len(frames))]
         else:
             pixel_clusters = self.__calculate_pixel_clusters(background_map, frames)
@@ -79,7 +79,7 @@ class PixelData:
         :param frames: all frames gathered from the video.
         :return: A dictionary of pixels and their clusters
         """
-        background_frame_indices = background_map[(self.row, self.col)]  # a list of frames this pixel was in the background
+        background_frame_indices = background_map  # a list of frames this pixel was in the background
         pixel_clusters = {k: [k] for k in background_frame_indices}
         for i in range(len(background_frame_indices)):
             for j in range(i + 1, len(background_frame_indices)):

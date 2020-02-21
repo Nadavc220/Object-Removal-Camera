@@ -88,11 +88,13 @@ class FrameDetector:
         return detections
 
     def _filter_boxes(self, boxes, confidences, min_confidence, threshold=0.3):
-        idxs = cv2.dnn.NMSBoxes(boxes, confidences, min_confidence, threshold)
-        idxs = idxs.flatten()
-        return idxs
+        if len(boxes) > 0:
+            idxs = cv2.dnn.NMSBoxes(boxes, confidences, min_confidence, threshold)
+            idxs = idxs.flatten()
+            return idxs
+        return []
 
-    def _process_network_box_output(self, boxes, confidences, class_ids, unwanted_objects, image_shape, min_confidence, filter=True):
+    def _process_network_box_output(self, boxes, confidences, class_ids, unwanted_objects, image_shape, min_confidence, detection_resize_factor=None, filter=True):
         filtered_boxes_idx = range(len(boxes))
         if filter:
             filtered_boxes_idx = self._filter_boxes(boxes, confidences, min_confidence)
@@ -108,10 +110,10 @@ class FrameDetector:
             # expanding boxes to make sure entire object is contained in box
 
             detection = ut.Detection(CLASSES[class_ids[i]], confidences[i], box)
-            detection_struct.add_detection(detection)
+            detection_struct.add_detection(detection, resize_factor=detection_resize_factor)
         return detection_struct
 
-    def detect_frame(self, image, unwanted_objects, min_confidence=0.2):
+    def detect_frame(self, image, unwanted_objects, detection_resize_factor=None, min_confidence=0.2):
         """
 
         :param image:
@@ -145,7 +147,7 @@ class FrameDetector:
                     confidences.append(float(confidence))
                     class_ids.append(class_id)
 
-        detection_struct = self._process_network_box_output(boxes, confidences, class_ids, unwanted_objects, resized_image.shape[:2], min_confidence)
+        detection_struct = self._process_network_box_output(boxes, confidences, class_ids, unwanted_objects, resized_image.shape[:2], min_confidence, detection_resize_factor=detection_resize_factor)
         detection_struct.update_detections_to_image_coordinates(image)
 
         end = time.time()
