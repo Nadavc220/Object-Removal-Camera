@@ -5,12 +5,12 @@ and outputs a single "clean" image with every thing else besides the people usin
  
 
 ### Results Videos
-The videos used can be found in the [videos page](videos/).
-[![](results/video.jpg)](https://youtu.be/ab64TWzWn40)
+The input videos can be found in the [videos page](videos/).
+The output images can be found in the [results page](results/).
 
-### Edges to Shoes/handbags Translation
+### Project Flow Description
 
-![](results/edges2shoes_handbags.jpg)
+If you are interested in learning about the work flow of this project you can read the [project description file](project description.pdf)
 
 ### Animal Image Translation
 
