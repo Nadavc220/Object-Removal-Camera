@@ -14,4 +14,4 @@ If you are interested in learning about the work flow of this project you can re
 
 ### Results
 
-![](results/collage.jpg)
+![](results/collage.png)
