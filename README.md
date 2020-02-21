@@ -10,7 +10,7 @@ The output images can be found in the [results page](results/).
 
 ### Project Flow Description
 
-If you are interested in learning about the work flow of this project you can read the [project description file](project description.pdf)
+If you are interested in learning about the work flow of this project you can read the [project description file](project description.pdf).
 
 ### Animal Image Translation
 
